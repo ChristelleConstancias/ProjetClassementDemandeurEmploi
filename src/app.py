@@ -295,7 +295,7 @@ if not historique.empty:
             "Prédiction concernée",
             options=historique.index.tolist(),
             format_func=lambda index: (
-                f"{historique.loc[index, 'usager_id']} - "
+                f"{historique.loc[index, 'session_id']} - "
                 f"{historique.loc[index, 'date_inference']} - "
                 f"classe prédite {historique.loc[index, 'prediction']}"
             ),
@@ -310,7 +310,7 @@ if not historique.empty:
     if envoyer_feedback:
         prediction = historique.loc[index_prediction]
         feedback_payload = {
-            "usager_id": str(prediction["usager_id"]),
+            "session_id": str(prediction["session_id"]),
             "age": float(prediction["age"]),
             "niveau_diplome": str(prediction["niveau_diplome"]),
             "anciennete_poste_ans": float(prediction["anciennete_poste_ans"]),

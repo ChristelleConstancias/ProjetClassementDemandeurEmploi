@@ -38,7 +38,7 @@ class DemandeurEmploi(BaseModel):
 
 
 class Feedback(BaseModel):
-    usager_id: str
+    session_id: str
     age: float
     niveau_diplome: str
     anciennete_poste_ans: float
