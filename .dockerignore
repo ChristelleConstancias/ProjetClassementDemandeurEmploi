@@ -1,0 +1,9 @@
+.venv
+.git
+notebooks
+artifacts
+mlruns
+data
+__pycache__
+.env
+tests

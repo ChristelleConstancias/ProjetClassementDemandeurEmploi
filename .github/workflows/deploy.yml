@@ -1,0 +1,70 @@
+name: API CI/CD
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt pytest ruff
+      - run: python -m compileall -q src tests
+      - run: ruff check --select E4,E7,E9,F src/api.py src/app.py src/data.py src/models.py src/train_model.py tests/
+      - run: pytest -q tests/
+
+  image:
+    needs: validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+  deploy:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, linux, production]
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy approved image
+        env:
+          API_IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: |
+          test -f /srv/retour-emploi/artifacts/pipeline_meilleur_recall_f1.joblib
+          test -f "/srv/retour-emploi/data/dataset_trajectoire_emploi_Sujet Examen CISIA.csv"
+          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs
+          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/feedback
+          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/logs
+          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/archive
+          install -m 0644 docker-compose.yml /srv/retour-emploi/docker-compose.yml
+          cd /srv/retour-emploi
+          docker compose config --quiet
+          docker compose pull
+          docker compose up -d --no-build
+          curl --fail --retry 5 --retry-delay 2 http://127.0.0.1:8000/health
