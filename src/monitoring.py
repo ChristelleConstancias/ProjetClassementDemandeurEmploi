@@ -8,6 +8,7 @@ vers cette bibliotheque.
 Ecart de distribution : PSI (taille d'effet, porte la decision) complete par
 un test de Kolmogorov-Smirnov (indicatif).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -16,7 +17,6 @@ from scipy import stats
 from scipy.stats import ks_2samp
 
 from . import config as C
-
 
 
 # --------------------------------------------------------------------------
@@ -50,10 +50,7 @@ def ecart_variable(reference: np.ndarray, courant: np.ndarray) -> dict:
     courant = courant[~np.isnan(courant)]
 
     # bins à partir de la distribution de référence
-    bornes = np.quantile(
-        reference,
-        np.linspace(0, 1, 11)
-    )
+    bornes = np.quantile(reference, np.linspace(0, 1, 11))
 
     bornes = np.unique(bornes)
 
@@ -76,28 +73,23 @@ def ecart_variable(reference: np.ndarray, courant: np.ndarray) -> dict:
     ref_pct = np.clip(ref_pct, epsilon, None)
     cur_pct = np.clip(cur_pct, epsilon, None)
 
-    psi = np.sum(
-        (ref_pct - cur_pct)
-        * np.log(ref_pct / cur_pct)
-    )
+    psi = np.sum((ref_pct - cur_pct) * np.log(ref_pct / cur_pct))
 
-    ks_stat, ks_pvalue = ks_2samp(
-        reference,
-        courant
-    )
+    ks_stat, ks_pvalue = ks_2samp(reference, courant)
 
     return {
         "psi": float(psi),
         "ks_stat": float(ks_stat),
         "ks_pvalue": float(ks_pvalue),
-
         # décision métier basée sur la taille d'effet
-        "derive": bool(psi >= 0.25)
+        "derive": bool(psi >= 0.25),
     }
 
+
 # Fonctions de surveillance et de reporting des écarts.
-def rapport_ecart(reference: pd.DataFrame, courant: pd.DataFrame,
-                  variables: list[str] | None = None) -> pd.DataFrame:
+def rapport_ecart(
+    reference: pd.DataFrame, courant: pd.DataFrame, variables: list[str] | None = None
+) -> pd.DataFrame:
     """Ecart variable par variable entre une reference et une fenetre courante."""
     variables = variables or C.VARS_SURVEILLANCE
     lignes = []
@@ -107,9 +99,11 @@ def rapport_ecart(reference: pd.DataFrame, courant: pd.DataFrame,
         lignes.append(e)
     return pd.DataFrame(lignes)[["variable", "psi", "ks_stat", "ks_pvalue", "derive"]]
 
+
 # Fonctions de surveillance et de reporting des écarts.
-def surveiller(reference: pd.DataFrame, stream: pd.DataFrame,
-               segmenter: bool = True) -> pd.DataFrame:
+def surveiller(
+    reference: pd.DataFrame, stream: pd.DataFrame, segmenter: bool = True
+) -> pd.DataFrame:
     rapports = []
 
     # on boucle sur les semaines : colonne semaine du Dataframe
@@ -130,29 +124,26 @@ def surveiller(reference: pd.DataFrame, stream: pd.DataFrame,
 
             for parc in courant["parc"].unique():
 
-                courant_parc = courant[
-                    courant["parc"] == parc
-                ]
+                courant_parc = courant[courant["parc"] == parc]
 
                 # analyse par parc
-                r = rapport_ecart(
-                    reference,
-                    courant_parc
-                )
+                r = rapport_ecart(reference, courant_parc)
 
                 r["semaine"] = semaine
                 r["perimetre"] = parc
 
                 rapports.append(r)
 
-    return pd.concat(
-        rapports,
-        ignore_index=True
-    )
+    return pd.concat(rapports, ignore_index=True)
+
 
 # Fonctions de synthèse des dérives.
 def resume_derive(rapport: pd.DataFrame) -> pd.DataFrame:
     """Nb de variables en derive par semaine, au niveau global."""
     g = rapport[rapport["perimetre"] == "__global__"]
-    return (g.groupby("semaine")["derive"].sum()
-            .rename("n_variables_en_derive").reset_index())
+    return (
+        g.groupby("semaine")["derive"]
+        .sum()
+        .rename("n_variables_en_derive")
+        .reset_index()
+    )

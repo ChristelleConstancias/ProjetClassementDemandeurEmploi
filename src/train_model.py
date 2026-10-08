@@ -25,7 +25,11 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
 )
-from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    StratifiedKFold,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier
@@ -82,10 +86,12 @@ MODEL_SEARCH_SPACES: dict[str, dict[str, Any]] = {
     },
 }
 
+
 def prepare_dataframe(df: pd.DataFrame | None = None) -> pd.DataFrame:
     """Applique les transformations déterministes avant le split."""
     source = df if df is not None else D.load_data()
     return D.prepare_training_data(source)
+
 
 def build_scenario_split(
     df: pd.DataFrame,
@@ -100,7 +106,9 @@ def build_scenario_split(
     features = SCENARIOS[scenario_name]
     missing = [col for col in features if col not in df.columns]
     if missing:
-        raise ValueError(f"Scénario {scenario_name} contient des colonnes manquantes : {missing}")
+        raise ValueError(
+            f"Scénario {scenario_name} contient des colonnes manquantes : {missing}"
+        )
 
     X = df[features].copy()
     y = df[C.CIBLE].copy()
@@ -113,6 +121,7 @@ def build_scenario_split(
         stratify=y,
     )
     return X_train, X_test, y_train, y_test
+
 
 def build_preprocessor(scenario_name: str) -> ColumnTransformer:
     """Construit un préprocesseur ColumTransformer par type de variable."""
@@ -162,7 +171,10 @@ def build_preprocessor(scenario_name: str) -> ColumnTransformer:
                 Pipeline(
                     [
                         ("imputer", SimpleImputer(strategy="most_frequent")),
-                        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=True)),
+                        (
+                            "onehot",
+                            OneHotEncoder(handle_unknown="ignore", sparse_output=True),
+                        ),
                     ]
                 ),
                 categorical_cols,
@@ -185,6 +197,7 @@ def build_preprocessor(scenario_name: str) -> ColumnTransformer:
         )
 
     return ColumnTransformer(transformers=transformers, remainder="drop")
+
 
 def build_estimator(model_name: str, seed: int = C.SEED):
     """Construit un estimateur de base par nom de modèle."""
@@ -223,6 +236,7 @@ def build_estimator(model_name: str, seed: int = C.SEED):
         )
     raise ValueError(f"Modèle inconnu : {model_name}")
 
+
 def build_pipeline(scenario_name: str, model_name: str) -> Pipeline:
     """Construit le pipeline de prétraitement + modèle."""
     return Pipeline(
@@ -231,6 +245,7 @@ def build_pipeline(scenario_name: str, model_name: str) -> Pipeline:
             ("modele", build_estimator(model_name)),
         ]
     )
+
 
 def tune_model(
     model_name: str,
@@ -257,6 +272,7 @@ def tune_model(
     )
     search.fit(X_train, y_train)
     return search
+
 
 def evaluate_model(
     pipeline: Pipeline,
@@ -287,6 +303,7 @@ def evaluate_model(
         "y_pred": y_test_pred,
     }
 
+
 def save_model_artifact(
     pipeline: Pipeline,
     scenario_name: str,
@@ -306,6 +323,7 @@ def save_model_artifact(
         },
     }
     return M.sauver(pipeline, basename, metadata=metadata)
+
 
 def run_training(
     scenario_name: str = "complet",
@@ -347,7 +365,9 @@ def run_training(
                 mlflow.log_metric("f1_macro_cv", float(best_score))
             mlflow.log_metric("f1_macro_test", float(metrics["test"]["f1_macro"]))
             mlflow.log_metric("accuracy_test", float(metrics["test"]["accuracy"]))
-            mlflow.log_metric("balanced_accuracy_test", float(metrics["test"]["balanced_accuracy"]))
+            mlflow.log_metric(
+                "balanced_accuracy_test", float(metrics["test"]["balanced_accuracy"])
+            )
 
             figure, axes = __import__("matplotlib").pyplot.subplots()
             from sklearn.metrics import ConfusionMatrixDisplay
@@ -366,7 +386,9 @@ def run_training(
                 name="pipeline",
                 registered_model_name=f"RetourEmploi_{scenario_name}_{model_name}",
             )
-    except Exception as exc:  # pragma: no cover - robustness for local MLflow compatibility issues
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - robustness for local MLflow compatibility issues
         print(f"MLflow logging skipped for {mlflow_run_name}: {exc}")
 
     if save_artifact:
@@ -374,16 +396,23 @@ def run_training(
 
     return result
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Entraînement d'un modèle de tri des demandeurs d'emploi.")
+    parser = argparse.ArgumentParser(
+        description="Entraînement d'un modèle de tri des demandeurs d'emploi."
+    )
     parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="complet")
     parser.add_argument(
         "--model",
         choices=["logistic_regression", "random_forest", "lightgbm", "xgboost"],
         default="random_forest",
     )
-    parser.add_argument("--tune", action="store_true", help="Lance une recherche d'hyperparamètres.")
-    parser.add_argument("--no-save", action="store_true", help="Ne sauvegarde pas le modèle localement.")
+    parser.add_argument(
+        "--tune", action="store_true", help="Lance une recherche d'hyperparamètres."
+    )
+    parser.add_argument(
+        "--no-save", action="store_true", help="Ne sauvegarde pas le modèle localement."
+    )
     args = parser.parse_args()
 
     result = run_training(

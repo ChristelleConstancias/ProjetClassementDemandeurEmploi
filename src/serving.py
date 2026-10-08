@@ -1,4 +1,5 @@
 """Contrat d'entree pour un pipeline scenario 1 exporte du notebook."""
+
 from __future__ import annotations
 
 from pathlib import Path

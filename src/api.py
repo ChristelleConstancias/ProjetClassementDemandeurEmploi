@@ -1,4 +1,5 @@
 """API interne de prediction du retour a l'emploi."""
+
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -17,19 +18,15 @@ from sklearn.model_selection import train_test_split
 
 from src import config as C, data as D, models as M
 
+
 class DemandeurEmploi(BaseModel):
     # Définir ici les champs correspondant aux caractéristiques du demandeur d'emploi
-    #est ce qu'on a besoin de usage_id??
-    #niveau diplome : liste deroulante , ou saisie libre
+    # est ce qu'on a besoin de usage_id??
+    # niveau diplome : liste deroulante , ou saisie libre
     usager_id: str
-    age: float = Field(
-        ge=16,
-        le=100
-    )
+    age: float = Field(ge=16, le=100)
     niveau_diplome: str
-    anciennete_poste_ans: float = Field(
-        ge=0
-    )
+    anciennete_poste_ans: float = Field(ge=0)
     code_rome_vise: str
     code_insee_commune: str
     est_allocataire: float
@@ -55,10 +52,7 @@ class Feedback(BaseModel):
 # FastAPI
 # ==========================
 
-app = FastAPI(
-    title="Orientation Demandeur Emploi API",
-    version="1.0"
-)
+app = FastAPI(title="Orientation Demandeur Emploi API", version="1.0")
 
 MODEL_ARTIFACT_PATH = Path(
     os.getenv(
@@ -87,11 +81,9 @@ def charger_modele_actif() -> tuple[dict[str, object], str]:
 active_artifact, active_model_name = charger_modele_actif()
 pipeline = active_artifact["pipeline"]
 
+
 def journaliser_prediction(
-    session_id: str,
-    usager: dict,
-    prediction: int,
-    probabilite: float
+    session_id: str, usager: dict, prediction: int, probabilite: float
 ):
     log = {
         "session_id": session_id,
@@ -114,12 +106,14 @@ def journaliser_prediction(
         C.DIR_LOGS / "predictions.csv",
         mode="a",
         header=not (C.DIR_LOGS / "predictions.csv").exists(),
-        index=False
+        index=False,
     )
+
 
 # ==========================
 # Health Check
 # ==========================
+
 
 @app.get("/health")
 def health():
@@ -129,9 +123,11 @@ def health():
         "model": active_model_name,
     }
 
+
 # ==========================
 # Prediction
 # ==========================
+
 
 @app.post("/predict")
 def predict(demandeur_emploi: DemandeurEmploi):
@@ -158,27 +154,17 @@ def predict(demandeur_emploi: DemandeurEmploi):
         class_index = list(pipeline.classes_).index(prediction)
         probability = float(probabilities[class_index])
         # Journaliser la prédiction et la probabilité associée
-        journaliser_prediction(
-            session_id,
-            usager_test,
-            int(prediction),
-            probability
-        )
+        journaliser_prediction(session_id, usager_test, int(prediction), probability)
 
         print("Fin prediction pour demandeur_emploi:", demandeur_emploi)
 
-        return {
-            "prediction": int(prediction),
-            "probability": round(probability, 4)
-        }
+        return {"prediction": int(prediction), "probability": round(probability, 4)}
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Une route /feedback permet au conseiller d'enregistrer la classe réellement 
+
+# Une route /feedback permet au conseiller d'enregistrer la classe réellement
 # observée après le suivi du demandeur d'emploi. Ces retours utilisateurs sont stockés dans un fichier dédié.
 @app.post("/feedback")
 def feedback(usager: Feedback):
@@ -192,13 +178,11 @@ def feedback(usager: Feedback):
 
     # Enregistrer le feedback dans le fichier CSV
     df.to_csv(
-        fichier_feedback,
-        mode="a",
-        header=not fichier_feedback.exists(),
-        index=False
+        fichier_feedback, mode="a", header=not fichier_feedback.exists(), index=False
     )
 
     return {"message": "Feedback enregistré"}
+
 
 def entrainer_artefact(
     artifact: dict[str, object],
@@ -226,7 +210,9 @@ def entrainer_artefact(
             jeux.append(feedback)
 
     donnees = D.prepare_training_data(pd.concat(jeux, ignore_index=True, sort=False))
-    missing_features = [feature for feature in features if feature not in donnees.columns]
+    missing_features = [
+        feature for feature in features if feature not in donnees.columns
+    ]
     if missing_features:
         raise ValueError(f"Variables requises absentes : {missing_features}")
 
@@ -295,22 +281,26 @@ def retrain():
 
     try:
         artifact = joblib.load(MODEL_ARTIFACT_PATH)
-        updated_artifact, metrics, training_rows, feedback_rows = entrainer_artefact(artifact)
+        updated_artifact, metrics, training_rows, feedback_rows = entrainer_artefact(
+            artifact
+        )
 
         retraining_config = updated_artifact["retraining_config"]
         mlflow.set_tracking_uri(C.MLFLOW_TRACKING_URI)
         mlflow.set_experiment(C.MLFLOW_EXPERIMENT_RETRAINING)
         with mlflow.start_run(run_name="api_retraining"):
-            mlflow.log_params({
-                "model": str(retraining_config.get("model_name", "unknown")),
-                "scenario": str(retraining_config.get("scenario_name", "unknown")),
-                "training_rows": training_rows,
-                "feedback_rows": feedback_rows,
-                **{
-                    f"best_{key}": str(value)
-                    for key, value in retraining_config["best_params"].items()
-                },
-            })
+            mlflow.log_params(
+                {
+                    "model": str(retraining_config.get("model_name", "unknown")),
+                    "scenario": str(retraining_config.get("scenario_name", "unknown")),
+                    "training_rows": training_rows,
+                    "feedback_rows": feedback_rows,
+                    **{
+                        f"best_{key}": str(value)
+                        for key, value in retraining_config["best_params"].items()
+                    },
+                }
+            )
             mlflow.log_metrics(metrics)
             mlflow.sklearn.log_model(
                 sk_model=updated_artifact["pipeline"],
@@ -346,4 +336,6 @@ def retrain():
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Échec du réentraînement : {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Échec du réentraînement : {exc}"
+        ) from exc
