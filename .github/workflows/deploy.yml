@@ -27,6 +27,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Repository name to lowercase
+        run: |
+          echo "REPO_LC=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - uses: docker/login-action@v3
         if: github.event_name == 'push'
         with:
@@ -37,7 +42,7 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
 
   deploy:
     needs: image
@@ -56,7 +61,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy approved image
         env:
-          API_IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          API_IMAGE: ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
         run: |
           test -f /srv/retour-emploi/artifacts/pipeline_meilleur_recall_f1.joblib
           test -f "/srv/retour-emploi/data/dataset_trajectoire_emploi_Sujet Examen CISIA.csv"
