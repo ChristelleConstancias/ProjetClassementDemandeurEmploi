@@ -1,17 +1,15 @@
 """
-Interface Streamlit pour l'API de prédiction retour à l'emploi  
+Interface Streamlit pour l'API de prédiction retour à l'emploi
 """
 
 import streamlit as st
 import pandas as pd
 import requests
-from inference_history import (
-    get_last_predictions,
-    get_stats
-)
+from inference_history import get_last_predictions, get_stats
 
 API_URL = "http://localhost:8000"
 CODE_POSTAL_FILE = "data/code_postal.csv"  # placer ici le CSV si disponible
+
 
 @st.cache_data
 def charger_codes_rome():
@@ -29,19 +27,16 @@ def charger_codes_rome():
     )
 
     df_rome = (
-        df_rome[
-            ["code_rome", "label_rome"]
-        ]
-        .drop_duplicates()
-        .sort_values("code_rome")
+        df_rome[["code_rome", "label_rome"]].drop_duplicates().sort_values("code_rome")
     )
 
     return df_rome
 
+
 df_rome = charger_codes_rome()
 
-@st.cache_data
 
+@st.cache_data
 def charger_codes_postaux():
     """
     Charge les codes postaux existants depuis le fichier CSV.
@@ -51,39 +46,28 @@ def charger_codes_postaux():
     fichier = CODE_POSTAL_FILE
 
     import os
-    if not os.path.exists(fichier):
-        raise FileNotFoundError(
-            f"Fichier introuvable : {os.path.abspath(fichier)}"
-        )
 
-    df_codes_postaux = pd.read_csv(
-        fichier,
-        sep=",",
-        dtype=str
-    )
+    if not os.path.exists(fichier):
+        raise FileNotFoundError(f"Fichier introuvable : {os.path.abspath(fichier)}")
+
+    df_codes_postaux = pd.read_csv(fichier, sep=",", dtype=str)
 
     df_codes_postaux = (
-        df_codes_postaux[
-            ["code_commune", "nom_de_la_commune"]
-        ]
+        df_codes_postaux[["code_commune", "nom_de_la_commune"]]
         .drop_duplicates()
         .sort_values("code_commune")
     )
 
     return df_codes_postaux
 
+
 df_codes_postaux = charger_codes_postaux()
 
-st.set_page_config(
-    page_title="Orientation Emploi IA",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="Orientation Emploi IA", page_icon="📊", layout="wide")
 
 st.title("📊 Orientation des Demandeurs d'Emploi")
 st.markdown(
-    "Prédiction du délai de retour à l'emploi "
-    "à partir des informations renseignées."
+    "Prédiction du délai de retour à l'emploi " "à partir des informations renseignées."
 )
 
 with st.sidebar:
@@ -119,41 +103,24 @@ with st.form("prediction_form"):
 
     st.subheader("Informations de l'usager")
 
-    usager_id = st.text_input(
-        "Identifiant usager",
-        placeholder="ID_0000"
-    )
+    usager_id = st.text_input("Identifiant usager", placeholder="ID_0000")
 
-    age = st.number_input(
-        "Âge",
-        min_value=16,
-        max_value=67,
-        value=30
-    )
+    age = st.number_input("Âge", min_value=16, max_value=67, value=30)
 
     niveau_diplome = st.selectbox(
-        "Niveau de diplôme",
-        [
-            "Sans diplôme",
-            "Bac",
-            "Bac+2",
-            "Bac+5"
-        ]
+        "Niveau de diplôme", ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
     )
 
     anciennete_poste_ans = st.number_input(
-        "Ancienneté dans le dernier emploi (années)",
-        min_value=0.0,
-        value=2.0
+        "Ancienneté dans le dernier emploi (années)", min_value=0.0, value=2.0
     )
 
     code_rome_vise = st.selectbox(
         "Code ROME visé",
         options=df_rome["code_rome"].tolist(),
         format_func=lambda x: (
-            f"{x} - "
-            f"{df_rome.loc[df_rome['code_rome'] == x, 'label_rome'].iloc[0]}"
-        )
+            f"{x} - " f"{df_rome.loc[df_rome['code_rome'] == x, 'label_rome'].iloc[0]}"
+        ),
     )
 
     code_insee_commune = st.selectbox(
@@ -162,27 +129,16 @@ with st.form("prediction_form"):
         format_func=lambda x: (
             f"{x} - "
             f"{df_codes_postaux.loc[df_codes_postaux['code_commune'] == x, 'nom_de_la_commune'].iloc[0]}"
-        )
+        ),
     )
 
-    est_allocataire = st.selectbox(
-        "Allocataire",
-        [0, 1]
-    )
+    est_allocataire = st.selectbox("Allocataire", [0, 1])
 
-    nationalite_hors_ue = st.selectbox(
-        "Nationalité hors UE",
-        [0, 1]
-    )
+    nationalite_hors_ue = st.selectbox("Nationalité hors UE", [0, 1])
 
-    synthese_entretien = st.text_area(
-        "Synthèse entretien",
-        height=150
-    )
+    synthese_entretien = st.text_area("Synthèse entretien", height=150)
 
-    submit = st.form_submit_button(
-        "Prédire"
-    )
+    submit = st.form_submit_button("Prédire")
 
 # ==========================
 # Appel API
@@ -199,16 +155,12 @@ if submit:
         "code_insee_commune": code_insee_commune,
         "est_allocataire": est_allocataire,
         "nationalite_hors_ue": nationalite_hors_ue,
-        "synthese_entretien": synthese_entretien
+        "synthese_entretien": synthese_entretien,
     }
 
     try:
 
-        response = requests.post(
-            f"{API_URL}/predict",
-            json=payload,
-            timeout=10
-        )
+        response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
 
         if response.status_code == 200:
 
@@ -220,20 +172,14 @@ if submit:
             libelles = {
                 0: "🟢 Retour rapide (< 6 mois)",
                 1: "🟡 Retour moyen (6 à 12 mois)",
-                2: "🔴 Risque longue durée (> 12 mois)"
+                2: "🔴 Risque longue durée (> 12 mois)",
             }
 
             st.success("Prédiction réalisée")
 
-            st.metric(
-                "Classe prédite",
-                libelles.get(prediction, prediction)
-            )
+            st.metric("Classe prédite", libelles.get(prediction, prediction))
 
-            st.metric(
-                "Score de confiance",
-                f"{probability:.2%}"
-            )
+            st.metric("Score de confiance", f"{probability:.2%}")
 
         else:
             st.error(response.text)
@@ -257,30 +203,15 @@ if not historique.empty:
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "Nombre d'inférences",
-        stats["nombre_inferences"]
-    )
+    col1.metric("Nombre d'inférences", stats["nombre_inferences"])
 
-    col2.metric(
-        "Classe 0",
-        stats["classe_0"]
-    )
+    col2.metric("Classe 0", stats["classe_0"])
 
-    col3.metric(
-        "Classe 1",
-        stats["classe_1"]
-    )
+    col3.metric("Classe 1", stats["classe_1"])
 
-    col4.metric(
-        "Classe 2",
-        stats["classe_2"]
-    )
+    col4.metric("Classe 2", stats["classe_2"])
 
-    st.dataframe(
-        historique,
-        use_container_width=True
-    )
+    st.dataframe(historique, use_container_width=True)
 
     st.subheader("Envoyer un feedback")
 
@@ -335,6 +266,4 @@ if not historique.empty:
             st.error(f"Échec de l'envoi du feedback : {exc}")
 
 else:
-    st.info(
-        "Aucune prédiction enregistrée."
-    )
+    st.info("Aucune prédiction enregistrée.")

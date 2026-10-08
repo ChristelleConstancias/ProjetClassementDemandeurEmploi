@@ -2,16 +2,14 @@
 Gestion de l'historique des inférences
 """
 
-from pathlib import Path
 import pandas as pd
-#from . import config as C
-#from src import config as C, data as D, models as M
-#import config as C
-#import data as D
-#import models as M
-from config import (
-    PREDICTIONS_LOG_FILE    
-)
+
+# from . import config as C
+# from src import config as C, data as D, models as M
+# import config as C
+# import data as D
+# import models as M
+from config import PREDICTIONS_LOG_FILE
 
 
 def get_historique():

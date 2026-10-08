@@ -3,11 +3,13 @@
 Les colonnes internes prefixees par "_"  sont la verite terrain : reservees a
 l'evaluation et au corrige, jamais donnees en entree au modele.
 """
+
 from __future__ import annotations
 
 import pandas as pd
 
 from . import config as C
+
 
 # Fonctions de chargement
 def load_data(verbose: bool = True) -> pd.DataFrame:
@@ -22,6 +24,7 @@ def load_data(verbose: bool = True) -> pd.DataFrame:
         print(f"Chargement du CSV : {C.DEMANDEUR_FILE}")
     return pd.read_csv(C.DEMANDEUR_FILE)
 
+
 # charge le fichier de feedback
 def load_feedback(verbose: bool = True) -> pd.DataFrame:
     """Charge le jeu de donnees depuis outputs/feedback/feedback.csv."""
@@ -34,6 +37,7 @@ def load_feedback(verbose: bool = True) -> pd.DataFrame:
     if verbose:
         print(f"Chargement du CSV : {C.FEEDBACK_FILE}")
     return pd.read_csv(C.FEEDBACK_FILE)
+
 
 # Preparation des donnees d'entree pour le modele :
 # calcul des variables derivees partage avec l'entrainement.
@@ -48,15 +52,14 @@ def prepare_training_data(df: pd.DataFrame) -> pd.DataFrame:
         .str[:2]
     )
     prepared["famille_metier"] = (
-        prepared["code_rome_vise"]
-        .astype("string")
-        .str.strip()
-        .str[:3]
+        prepared["code_rome_vise"].astype("string").str.strip().str[:3]
     )
     prepared["niveau_diplome_ordinal"] = prepared["niveau_diplome"].map(
         C.ordre_niveau_diplome
     )
-    prepared["synthese_entretien"] = prepared["synthese_entretien"].fillna("").astype(str)
+    prepared["synthese_entretien"] = (
+        prepared["synthese_entretien"].fillna("").astype(str)
+    )
 
     mask = prepared["anciennete_poste_ans"] > (prepared["age"] - 16)
     prepared.loc[mask, "anciennete_poste_ans"] = prepared.loc[mask, "age"] - 16
