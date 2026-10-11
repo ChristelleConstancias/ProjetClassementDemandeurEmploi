@@ -15,7 +15,7 @@ l'API d'IA ne recoit que les champs necessaires au calcul, ne se connecte pas di
 
 Depuis la racine du projet, installer les dependances avec
 `pip install -r requirements.txt`. Executer les cellules du notebook jusqu'a l'export du pipeline : l'API attend
-`artifacts/pipeline_meilleur_recall_f1.joblib`, au format dictionnaire contenant les cles `pipeline` et `retraining_config`.
+`artifacts/pipeline_prediction_retour_emploi.joblib`, au format dictionnaire contenant les cles `pipeline` et `retraining_config`.
 
 Lancer ensuite l'API depuis la racine du projet :
 
@@ -23,14 +23,24 @@ Lancer ensuite l'API depuis la racine du projet :
 python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
-Ouvrir `http://127.0.0.1:8000/docs` pour tester `POST /predict`. `GET /health` doit retourner 200. Si le chargement echoue, verifier que `artifacts/pipeline_meilleur_recall_f1.joblib` existe et que ses dependances sont installees.
+Ouvrir `http://127.0.0.1:8000/docs` pour tester `POST /predict`. `GET /health` doit retourner 200. Si le chargement echoue, verifier que `artifacts/pipeline_prediction_retour_emploi.joblib` existe et que ses dependances sont installees.
+
+### Interface Streamlit
+
+Depuis la racine du projet, lancer :
+
+```powershell
+python -m streamlit run src/app.py
+```
+
+La navigation contient trois pages : `Nouvelle prédiction`, `Historique` (filtres et feedback) et `Gestion du modèle` (état et réentraînement).
 
 ### Tests et lint locaux
 
 ```powershell
 python -m pip install -r requirements.txt pytest ruff
 python -m compileall -q src tests
-python -m ruff check --select E4,E7,E9,F src/api.py src/app.py src/data.py src/models.py src/train_model.py tests/
+python -m ruff check --select E4,E7,E9,F src/api.py src/app.py src/data.py src/models.py tests/
 python -m pytest -q tests/
 ```
 
@@ -40,7 +50,7 @@ Les pull requests executent compilation, lint, tests et build de l'image sans pu
 
 Avant le premier deploiement, preparer sur ce runner :
 
-- `/srv/retour-emploi/artifacts/pipeline_meilleur_recall_f1.joblib` (artefact valide, lisible par l'UID 10001 du conteneur) ;
+- `/srv/retour-emploi/artifacts/pipeline_prediction_retour_emploi.joblib` (artefact valide, lisible par l'UID 10001 du conteneur) ;
 - `/srv/retour-emploi/data/dataset_trajectoire_emploi_Sujet Examen CISIA.csv` (lisible par l'UID 10001) ;
 - les droits d'ecriture pour l'UID 10001 sur `/srv/retour-emploi/outputs`.
 

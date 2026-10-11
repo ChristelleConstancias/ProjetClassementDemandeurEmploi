@@ -39,7 +39,7 @@ def load_feedback(verbose: bool = True) -> pd.DataFrame:
     return pd.read_csv(C.FEEDBACK_FILE)
 
 
-# Preparation des donnees d'entree pour le modele :
+# Preparation des donnees d'entree pour reentrainer le modele /retrain ou /predict:
 # calcul des variables derivees partage avec l'entrainement.
 def prepare_training_data(df: pd.DataFrame) -> pd.DataFrame:
     """Applique les transformations deterministes au jeu d'entrainement."""
@@ -65,7 +65,7 @@ def prepare_training_data(df: pd.DataFrame) -> pd.DataFrame:
     prepared.loc[mask, "anciennete_poste_ans"] = prepared.loc[mask, "age"] - 16
     return prepared
 
-
+# Preparation des donnees d'entree pour l'inference /predict
 def prepare_data(
     usager: dict,
     features: list[str] | None = None,

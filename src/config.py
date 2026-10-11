@@ -23,6 +23,8 @@ DEMANDEUR_FILE = (
     DATA_DIR / "dataset_trajectoire_emploi_Sujet Examen CISIA.csv"
 )  # placer ici le CSV si disponible
 CODE_POSTAL_FILE = DATA_DIR / "code_postal.csv"  # placer ici le CSV si disponible
+ROME_FILE = DATA_DIR / "data_rome.csv"
+
 MLFLOW_DB_FILE = ROOT / "mlflow.db"
 MLFLOW_TRACKING_URI = os.getenv(
     "MLFLOW_TRACKING_URI",
@@ -69,6 +71,23 @@ FEATURES_CAT = [
 ]
 
 FEATURE_TEXT = ["synthese_entretien"]
+
+FRENCH_STOP_WORDS = [
+    "a", "ai", "aie", "aient", "aies", "ait", "as", "au", "aucun",
+    "aussi", "autre", "aux", "avec", "avoir", "bon", "car", "ce",
+    "cela", "ces", "cet", "cette", "ceux", "chaque", "ci", "comme",
+    "comment", "dans", "de", "des", "du", "elle", "elles", "en",
+    "encore", "entre", "est", "et", "eu", "fait", "faites", "fois",
+    "font", "hors", "ici", "il", "ils", "je", "la", "le", "les",
+    "leur", "leurs", "lui", "ma", "mais", "me", "meme", "mes",
+    "moi", "mon", "ne", "nos", "notre", "nous", "on", "ou", "par",
+    "pas", "peu", "pour", "pourquoi", "quand", "que", "quel", "quelle",
+    "quelles", "quels", "qui", "sa", "sans", "se", "sera", "seront",
+    "ses", "si", "sien", "son", "sont", "sous", "sur", "ta", "te",
+    "tes", "toi", "ton", "tous", "tout", "trop", "tu", "un", "une",
+    "vos", "votre", "vous", "y", "à", "ça", "étaient", "étais",
+    "était", "étant", "été", "être",
+]
 
 FEATURES = FEATURES_NUM + FEATURES_CAT_ORDINAL + FEATURES_CAT + FEATURE_TEXT
 

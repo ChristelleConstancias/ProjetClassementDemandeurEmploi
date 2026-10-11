@@ -6,8 +6,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      MODEL_PATH: /app/artifacts/pipeline_meilleur_recall_f1.joblib
+      MODEL_PATH: /app/artifacts/pipeline_prediction_retour_emploi.joblib
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      USAGER_ID_HMAC_KEY: "${USAGER_ID_HMAC_KEY:?USAGER_ID_HMAC_KEY must be configured}"
     volumes:
       - /srv/retour-emploi/artifacts:/app/artifacts
       - /srv/retour-emploi/data:/app/data:ro

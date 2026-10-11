@@ -31,3 +31,4 @@ uvicorn>=0.30
 pydantic>=2.0
 requests>=2.31
 mlflow>=3.0
+shap>=0.46

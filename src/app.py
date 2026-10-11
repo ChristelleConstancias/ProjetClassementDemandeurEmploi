@@ -2,13 +2,30 @@
 Interface Streamlit pour l'API de prédiction retour à l'emploi
 """
 
+import sys
+from pathlib import Path
+
+import numpy as np
 import streamlit as st
 import pandas as pd
 import requests
-from inference_history import get_last_predictions, get_stats
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src import config as C
+
+st.set_page_config(page_title="Prediction", layout="wide")
 
 API_URL = "http://localhost:8000"
-CODE_POSTAL_FILE = "data/code_postal.csv"  # placer ici le CSV si disponible
+
+st.session_state.setdefault("conseiller_id", "cconastancias")
+st.session_state.setdefault("prediction_payload", None)
+st.session_state.setdefault("prediction_result", None)
+st.session_state.setdefault("prediction_explanation", None)
+
+
+def memoriser_conseiller_id():
+    st.session_state["conseiller_id"] = st.session_state["prediction_conseiller_id"]
 
 
 @st.cache_data
@@ -21,7 +38,7 @@ def charger_codes_rome():
     """
 
     df_rome = pd.read_csv(
-        "data/data_rome.csv",
+        C.ROME_FILE,
         sep=",",
         encoding="utf-8-sig",
     )
@@ -34,6 +51,7 @@ def charger_codes_rome():
 
 
 df_rome = charger_codes_rome()
+labels_rome = df_rome.set_index("code_rome")["label_rome"].to_dict()
 
 
 @st.cache_data
@@ -43,12 +61,10 @@ def charger_codes_postaux():
     Retourne une liste unique de codes postaux à 5 caractères.
     """
 
-    fichier = CODE_POSTAL_FILE
+    fichier = C.CODE_POSTAL_FILE
 
-    import os
-
-    if not os.path.exists(fichier):
-        raise FileNotFoundError(f"Fichier introuvable : {os.path.abspath(fichier)}")
+    if not fichier.exists():
+        raise FileNotFoundError(f"Fichier introuvable : {fichier.resolve()}")
 
     df_codes_postaux = pd.read_csv(fichier, sep=",", dtype=str)
 
@@ -62,38 +78,20 @@ def charger_codes_postaux():
 
 
 df_codes_postaux = charger_codes_postaux()
+labels_communes = df_codes_postaux.set_index("code_commune")[
+    "nom_de_la_commune"
+].to_dict()
 
-st.set_page_config(page_title="Orientation Emploi IA", page_icon="📊", layout="wide")
-
-st.title("📊 Orientation des Demandeurs d'Emploi")
-st.markdown(
-    "Prédiction du délai de retour à l'emploi " "à partir des informations renseignées."
-)
+st.title("Nouvelle prédiction")
 
 with st.sidebar:
-    st.subheader("Gestion du modèle")
-    st.caption("Pipeline sélectionné selon le F1 macro et le rappel de la classe 2.")
-    if st.button("Réentraîner le pipeline", use_container_width=True):
-        with st.spinner("Réentraînement à partir de l'historique et des feedbacks..."):
-            try:
-                response = requests.post(
-                    f"{API_URL}/retrain",
-                    timeout=300,
-                )
-                response.raise_for_status()
-                resultat_retrain = response.json()
-                st.success(resultat_retrain["message"])
-                st.metric("F1 macro", f"{resultat_retrain['f1_macro']:.3f}")
-                st.metric(
-                    "Rappel classe 2",
-                    f"{resultat_retrain['recall_classe_2']:.3f}",
-                )
-                st.caption(
-                    f"Données utilisées : {resultat_retrain['training_rows']} "
-                    f"lignes, dont {resultat_retrain['feedback_rows']} feedbacks."
-                )
-            except requests.RequestException as exc:
-                st.error(f"Échec du réentraînement : {exc}")
+    st.text_input(
+        "Identifiant conseiller",
+        value=st.session_state["conseiller_id"],
+        key="prediction_conseiller_id",
+        on_change=memoriser_conseiller_id,
+    )
+    conseiller_id = st.session_state["conseiller_id"]
 
 # ==========================
 # Formulaire
@@ -118,18 +116,13 @@ with st.form("prediction_form"):
     code_rome_vise = st.selectbox(
         "Code ROME visé",
         options=df_rome["code_rome"].tolist(),
-        format_func=lambda x: (
-            f"{x} - " f"{df_rome.loc[df_rome['code_rome'] == x, 'label_rome'].iloc[0]}"
-        ),
+        format_func=lambda code: f"{code} - {labels_rome[code]}",
     )
 
     code_insee_commune = st.selectbox(
         "Code INSEE commune",
         options=df_codes_postaux["code_commune"].tolist(),
-        format_func=lambda x: (
-            f"{x} - "
-            f"{df_codes_postaux.loc[df_codes_postaux['code_commune'] == x, 'nom_de_la_commune'].iloc[0]}"
-        ),
+        format_func=lambda code: f"{code} - {labels_communes[code]}",
     )
 
     est_allocataire = st.selectbox("Allocataire", [0, 1])
@@ -145,125 +138,130 @@ with st.form("prediction_form"):
 # ==========================
 
 if submit:
+    st.session_state["prediction_payload"] = None
+    st.session_state["prediction_result"] = None
+    st.session_state["prediction_explanation"] = None
 
-    payload = {
-        "usager_id": usager_id,
-        "age": age,
-        "niveau_diplome": niveau_diplome,
-        "anciennete_poste_ans": anciennete_poste_ans,
-        "code_rome_vise": code_rome_vise,
-        "code_insee_commune": code_insee_commune,
-        "est_allocataire": est_allocataire,
-        "nationalite_hors_ue": nationalite_hors_ue,
-        "synthese_entretien": synthese_entretien,
-    }
-
-    try:
-
-        response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
-
-        if response.status_code == 200:
-
-            resultat = response.json()
-
-            prediction = resultat["prediction"]
-            probability = resultat["probability"]
-
-            libelles = {
-                0: "🟢 Retour rapide (< 6 mois)",
-                1: "🟡 Retour moyen (6 à 12 mois)",
-                2: "🔴 Risque longue durée (> 12 mois)",
-            }
-
-            st.success("Prédiction réalisée")
-
-            st.metric("Classe prédite", libelles.get(prediction, prediction))
-
-            st.metric("Score de confiance", f"{probability:.2%}")
-
-        else:
-            st.error(response.text)
-
-    except Exception as e:
-        st.error(f"Erreur : {e}")
-
-# ==========================
-# Historique des inférences
-# ==========================
-
-st.divider()
-
-st.subheader("Historique des inférences")
-
-historique = get_last_predictions()
-print(historique)
-
-if not historique.empty:
-    stats = get_stats()
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("Nombre d'inférences", stats["nombre_inferences"])
-
-    col2.metric("Classe 0", stats["classe_0"])
-
-    col3.metric("Classe 1", stats["classe_1"])
-
-    col4.metric("Classe 2", stats["classe_2"])
-
-    st.dataframe(historique, use_container_width=True)
-
-    st.subheader("Envoyer un feedback")
-
-    classes_retour = {
-        0: "0 - Retour rapide (< 6 mois)",
-        1: "1 - Retour moyen (6 à 12 mois)",
-        2: "2 - Retour longue durée (> 12 mois)",
-    }
-
-    with st.form("feedback_form"):
-        index_prediction = st.selectbox(
-            "Prédiction concernée",
-            options=historique.index.tolist(),
-            format_func=lambda index: (
-                f"{historique.loc[index, 'session_id']} - "
-                f"{historique.loc[index, 'date_inference']} - "
-                f"classe prédite {historique.loc[index, 'prediction']}"
-            ),
-        )
-        classe_reelle = st.selectbox(
-            "Classe réellement constatée",
-            options=list(classes_retour),
-            format_func=lambda classe: classes_retour[classe],
-        )
-        envoyer_feedback = st.form_submit_button("Envoyer le feedback")
-
-    if envoyer_feedback:
-        prediction = historique.loc[index_prediction]
-        feedback_payload = {
-            "session_id": str(prediction["session_id"]),
-            "age": float(prediction["age"]),
-            "niveau_diplome": str(prediction["niveau_diplome"]),
-            "anciennete_poste_ans": float(prediction["anciennete_poste_ans"]),
-            "code_rome_vise": str(prediction["code_rome_vise"]),
-            "code_insee_commune": str(prediction["code_insee_commune"]),
-            "est_allocataire": float(prediction["est_allocataire"]),
-            "nationalite_hors_ue": int(prediction["nationalite_hors_ue"]),
-            "synthese_entretien": str(prediction["synthese_entretien"]),
-            "prediction_modele": int(prediction["prediction"]),
-            "classe_reelle": int(classe_reelle),
+    if not conseiller_id.strip():
+        st.error("Renseigne l'identifiant du conseiller avant de prédire.")
+    elif not usager_id.strip():
+        st.error("Renseigne l'identifiant de l'usager avant de prédire.")
+    else:
+        payload = {
+            "usager_id": usager_id,
+            "conseiller_id": conseiller_id.strip(),
+            "age": age,
+            "niveau_diplome": niveau_diplome,
+            "anciennete_poste_ans": anciennete_poste_ans,
+            "code_rome_vise": code_rome_vise,
+            "code_insee_commune": code_insee_commune,
+            "est_allocataire": est_allocataire,
+            "nationalite_hors_ue": nationalite_hors_ue,
+            "synthese_entretien": synthese_entretien,
         }
 
         try:
-            response = requests.post(
-                f"{API_URL}/feedback",
-                json=feedback_payload,
-                timeout=10,
-            )
+            response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
             response.raise_for_status()
-            st.success("Feedback enregistré.")
+            st.session_state["prediction_payload"] = payload
+            st.session_state["prediction_result"] = response.json()
         except requests.RequestException as exc:
-            st.error(f"Échec de l'envoi du feedback : {exc}")
+            st.error(f"Erreur lors de l'appel à l'API : {exc}")
+        except ValueError as exc:
+            st.error(f"Réponse API invalide : {exc}")
 
-else:
-    st.info("Aucune prédiction enregistrée.")
+resultat = st.session_state["prediction_result"]
+if resultat:
+    prediction = resultat["prediction"]
+    libelles = {
+        0: "Retour rapide (< 6 mois)",
+        1: "Retour moyen (6 à 12 mois)",
+        2: "Risque longue durée (> 12 mois)",
+    }
+
+    st.success("Prédiction réalisée")
+    st.metric("Classe prédite", libelles.get(prediction, prediction))
+    st.metric("Score de confiance", f"{resultat['probability']:.2%}")
+
+    if st.button("Expliquer la prédiction", key="explain_prediction"):
+        try:
+            with st.spinner("Calcul de l'explication..."):
+                response = requests.post(
+                    f"{API_URL}/explain",
+                    json=st.session_state["prediction_payload"],
+                    timeout=30,
+                )
+                response.raise_for_status()
+                st.session_state["prediction_explanation"] = response.json()
+        except requests.HTTPError as exc:
+            try:
+                detail = response.json().get("detail", str(exc))
+            except ValueError:
+                detail = str(exc)
+            st.error(f"Explication indisponible : {detail}")
+        except requests.RequestException as exc:
+            st.error(f"Erreur lors de l'appel à l'API : {exc}")
+        except ValueError as exc:
+            st.error(f"Réponse API invalide : {exc}")
+
+    explication = st.session_state["prediction_explanation"]
+    if explication:
+        try:
+            classes = explication["classes"]
+            index_classe = classes.index(int(prediction))
+            valeurs_shap = np.asarray(explication["shap_values"])
+            nombre_variables = len(explication["feature_names"])
+            nombre_classes = len(classes)
+
+            if valeurs_shap.ndim == 3 and valeurs_shap.shape == (
+                1,
+                nombre_variables,
+                nombre_classes,
+            ):
+                contributions = valeurs_shap[0, :, index_classe]
+            elif valeurs_shap.ndim == 3 and valeurs_shap.shape == (
+                nombre_classes,
+                1,
+                nombre_variables,
+            ):
+                contributions = valeurs_shap[index_classe, 0, :]
+            elif valeurs_shap.ndim == 2 and valeurs_shap.shape == (
+                nombre_variables,
+                nombre_classes,
+            ):
+                contributions = valeurs_shap[:, index_classe]
+            elif valeurs_shap.ndim == 2 and valeurs_shap.shape == (
+                1,
+                nombre_variables,
+            ):
+                contributions = valeurs_shap[0]
+            else:
+                raise ValueError(
+                    f"Format SHAP non reconnu : {valeurs_shap.shape}"
+                )
+
+            details = pd.DataFrame(
+                {
+                    "Variable": explication["feature_names"],
+                    "Contribution": contributions,
+                }
+            )
+            details["Importance absolue"] = details["Contribution"].abs()
+            principales = details.nlargest(15, "Importance absolue").sort_values(
+                "Contribution"
+            )
+
+            st.subheader("Explication de la prédiction")
+            st.caption(
+                "Contributions des variables à la classe prédite : une valeur "
+                "positive pousse le score vers cette classe, une valeur négative "
+                "l'en éloigne."
+            )
+            st.bar_chart(principales.set_index("Variable")["Contribution"])
+            st.dataframe(
+                principales.drop(columns="Importance absolue"),
+                hide_index=True,
+                use_container_width=True,
+            )
+        except (KeyError, ValueError, IndexError) as exc:
+            st.error(f"Impossible d'afficher l'explication : {exc}")

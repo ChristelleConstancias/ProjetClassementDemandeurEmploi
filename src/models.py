@@ -21,7 +21,7 @@ from sklearn.metrics import (
 
 from . import config as C
 
-
+# Fonctions pour sauvegarder et charger les modèles et leurs métadonnées
 def sauver(
     pipe: Pipeline,
     nom: str,
@@ -54,7 +54,7 @@ def sauver(
     )
     return str(chemin)
 
-
+# Fonctions pour charger les artefacts et les pipelines : depuis les fichiers sauvegardés
 def charger_artefact(nom: str) -> dict[str, object]:
     """Charge le pipeline et ses métadonnées, y compris les anciens fichiers."""
     contenu = joblib.load(C.DIR_MODELS / f"{nom}.joblib")
@@ -67,10 +67,10 @@ def charger_artefact(nom: str) -> dict[str, object]:
     }
 
 
-def charger(nom: str) -> Pipeline:
+#def charger(nom: str) -> Pipeline:
     """Charge uniquement le pipeline pour conserver le contrat utilisé par l'API."""
-    return charger_artefact(nom)["model"]
-
+#    return charger_artefact(nom)["model"]
+    
 
 # Fonction pour évaluer plusieurs modèles sur un jeu de test
 def evaluer_modeles(
