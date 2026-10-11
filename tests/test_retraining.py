@@ -1,4 +1,23 @@
 from src.api import candidat_est_meilleur, calculer_cout_metier
+from src import api
+
+
+def test_active_model_loader_allows_missing_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        api,
+        "MODEL_ARTIFACT_PATH",
+        tmp_path / "pipeline_prediction_retour_emploi.joblib",
+    )
+
+    def artefact_historique_absent(_nom):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(api.M, "charger_artefact", artefact_historique_absent)
+
+    artifact, model_name = api.charger_modele_actif()
+
+    assert artifact == {"pipeline": None, "retraining_config": {}}
+    assert model_name == "unavailable"
 
 
 def test_business_cost_uses_notebook_error_weights():

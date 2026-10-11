@@ -94,7 +94,11 @@ def charger_modele_actif() -> tuple[dict[str, object], str]:
             return artifact, "pipeline_prediction_retour_emploi"
         raise ValueError(f"Artefact invalide : {MODEL_ARTIFACT_PATH}")
 
-    legacy_artifact = M.charger_artefact(LEGACY_MODEL_NAME)
+    try:
+        legacy_artifact = M.charger_artefact(LEGACY_MODEL_NAME)
+    except FileNotFoundError:
+        return {"pipeline": None, "retraining_config": {}}, "unavailable"
+
     return {
         "pipeline": legacy_artifact["model"],
         "retraining_config": legacy_artifact.get("metadata", {}),
@@ -142,9 +146,15 @@ def journaliser_prediction(
 # ==========================
 @app.get("/health")
 def health():
+    if pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Aucun artefact de modèle n'est disponible.",
+        )
+
     return {
         "status": "ok",
-        "model_loaded": pipeline is not None,
+        "model_loaded": True,
         "model": active_model_name,
     }
 
@@ -153,6 +163,12 @@ def health():
 # ==========================
 @app.post("/predict")
 def predict(demandeur_emploi: DemandeurEmploi):
+    if pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Aucun artefact de modèle n'est disponible.",
+        )
+
     session_id = str(uuid.uuid4())
 
     try:
@@ -201,6 +217,12 @@ def predict(demandeur_emploi: DemandeurEmploi):
 # ==========================
 @app.post("/explain")
 def explain(demandeur_emploi: DemandeurEmploi):
+    if pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Aucun artefact de modèle n'est disponible.",
+        )
+
     modele = pipeline.named_steps["model"]
     if not isinstance(modele, SHAP_MODELS):
         raise HTTPException(
