@@ -45,9 +45,10 @@ jobs:
           tags: ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
 
   deploy:
+
     needs: image
     if: github.event_name == 'push'
-    runs-on: [self-hosted, linux, production]
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read

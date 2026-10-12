@@ -106,7 +106,7 @@ with st.form("prediction_form"):
     age = st.number_input("Âge", min_value=16, max_value=67, value=30)
 
     niveau_diplome = st.selectbox(
-        "Niveau de diplôme", ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
+        "Niveau de diplôme", ["Sans diplôme", "Bac", "Bac+2", "Bac+3", "Bac+5", "Bac+8"]
     )
 
     anciennete_poste_ans = st.number_input(
