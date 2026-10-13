@@ -19,6 +19,7 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
 COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser artifacts/pipeline_prediction_retour_emploi.joblib ./artifacts/pipeline_prediction_retour_emploi.joblib
 
 USER appuser
 
