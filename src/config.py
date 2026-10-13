@@ -18,14 +18,14 @@ SEED = 42
 # Chemins
 # --------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.getenv("DATA_DIR", str(ROOT / "data")))
 DEMANDEUR_FILE = (
     DATA_DIR / "dataset_trajectoire_emploi_Sujet Examen CISIA.csv"
 )  # placer ici le CSV si disponible
 CODE_POSTAL_FILE = DATA_DIR / "code_postal.csv"  # placer ici le CSV si disponible
 ROME_FILE = DATA_DIR / "data_rome.csv"
 
-MLFLOW_DB_FILE = ROOT / "mlflow.db"
+MLFLOW_DB_FILE = Path(os.getenv("MLFLOW_DB_FILE", str(ROOT / "mlflow.db")))
 MLFLOW_TRACKING_URI = os.getenv(
     "MLFLOW_TRACKING_URI",
     f"sqlite:///{MLFLOW_DB_FILE.as_posix()}",
@@ -33,7 +33,7 @@ MLFLOW_TRACKING_URI = os.getenv(
 MLFLOW_EXPERIMENT_INVESTIGATION = "investigation"
 MLFLOW_EXPERIMENT_RETRAINING = "retraining"
 
-OUTPUTS = ROOT / "outputs"
+OUTPUTS = Path(os.getenv("OUTPUTS_DIR", str(ROOT / "outputs")))
 DIR_FEEDBACK = OUTPUTS / "feedback"
 FEEDBACK_FILE = OUTPUTS / "feedback" / "feedback.csv"  # placer ici le CSV si disponible
 DIR_ARCHIVE = OUTPUTS / "archive"

@@ -42,38 +42,22 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
+            ghcr.io/${{ env.REPO_LC }}:latest
 
   deploy:
-
     needs: image
-    if: ${{ false }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-    permissions:
-      contents: read
-      packages: read
     steps:
-      - uses: actions/checkout@v5
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy approved image
+      - name: Déclencher le déploiement Render
         env:
-          API_IMAGE: ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
-          USAGER_ID_HMAC_KEY: ${{ secrets.USAGER_ID_HMAC_KEY }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          test -f /srv/retour-emploi/artifacts/pipeline_prediction_retour_emploi.joblib
-          test -f "/srv/retour-emploi/data/dataset_trajectoire_emploi_Sujet Examen CISIA.csv"
-          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs
-          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/feedback
-          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/logs
-          install -d -o 10001 -g 10001 /srv/retour-emploi/outputs/archive
-          install -m 0644 docker-compose.yml /srv/retour-emploi/docker-compose.yml
-          cd /srv/retour-emploi
-          docker compose config --quiet
-          docker compose pull
-          docker compose up -d --no-build
-          curl --fail --retry 5 --retry-delay 2 http://127.0.0.1:8000/health
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Le secret GitHub RENDER_DEPLOY_HOOK_URL n'est pas configuré."
+            exit 1
+          fi
+          curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"

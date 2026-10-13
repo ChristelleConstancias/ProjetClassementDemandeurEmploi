@@ -46,14 +46,17 @@ python -m pytest -q tests/
 
 ### CI/CD GitHub Actions
 
-Les pull requests executent compilation, lint, tests et build de l'image sans publication. Un push sur `main` publie l'image dans GHCR, puis le job `deploy` la deploie. Ce dernier necessite un runner Linux auto-heberge portant les labels `self-hosted`, `linux` et `production`, avec Docker Compose et acces a GHCR.
+Les pull requests executent compilation, lint, tests et build de l'image sans publication. Un push sur `main` publie les tags `<commit-sha>` et `latest` dans GHCR, puis appelle le Deploy Hook Render. Ajouter l'URL du hook dans les secrets GitHub sous le nom `RENDER_DEPLOY_HOOK_URL` et desactiver l'auto-deploiement Render pour garder cet ordre.
 
-Avant le premier deploiement, preparer sur ce runner :
+Sur Render, creer un Web Service de type **Existing Image**, configure sur `ghcr.io/<proprietaire>/<depot>:latest`, avec un health check sur `/health`. Le package GHCR doit etre public ou Render doit avoir des identifiants de lecture du registre. Ajouter un disque persistant monte sur `/var/data` et configurer ces variables d'environnement :
 
-- `/srv/retour-emploi/artifacts/pipeline_prediction_retour_emploi.joblib` (artefact valide, lisible par l'UID 10001 du conteneur) ;
-- `/srv/retour-emploi/data/dataset_trajectoire_emploi_Sujet Examen CISIA.csv` (lisible par l'UID 10001) ;
-- les droits d'ecriture pour l'UID 10001 sur `/srv/retour-emploi/outputs`.
+- `MODEL_PATH=/var/data/artifacts/pipeline_prediction_retour_emploi.joblib`
+- `DATA_DIR=/var/data/data`
+- `OUTPUTS_DIR=/var/data/outputs`
+- `MLFLOW_DB_FILE=/var/data/mlflow.db`
+- `MLFLOW_TRACKING_URI=sqlite:////var/data/mlflow.db`
+- `USAGER_ID_HMAC_KEY` avec une cle secrete propre a l'environnement de production.
 
-Le fichier `docker-compose.yml` monte ces repertoires dans le conteneur et expose l'API uniquement sur `127.0.0.1:8000`; un proxy autorise doit fournir l'acces reseau requis. Les donnees et le modele ne sont pas integres a l'image. Le deploiement echoue volontairement si l'artefact ou le CSV manque.
+Les dossiers `artifacts/` et `data/` sont exclus de Git et ne sont pas integres a l'image. Avant d'utiliser l'API, provisionner le disque Render avec l'artefact modele et les fichiers de donnees necessaires, dans les chemins ci-dessus. Ne pas versionner ces fichiers, qui peuvent contenir des donnees sensibles. Le disque doit aussi permettre l'ecriture dans `/var/data/outputs`. Le Dockerfile ecoute sur la variable `PORT` fournie par Render.
 
-Compose lance egalement le serveur de tracking MLflow sur `127.0.0.1:5000`. L'API le contacte sur le reseau interne Compose via `MLFLOW_TRACKING_URI=http://mlflow:5000`; `/retrain` journalise les parametres, metriques et le pipeline candidat avant d'activer le modele. Deux volumes nommes conservent la base SQLite MLflow et les artefacts apres le redemarrage des conteneurs. Le notebook utilise toujours le tracking SQLite local lorsqu'il est execute hors de Compose.
+Le `docker-compose.yml` reste disponible pour le deploiement local ou sur un serveur gere : il lance l'API et un serveur MLflow distinct, contrairement au deploiement Render qui utilise le tracking SQLite sur disque persistant.

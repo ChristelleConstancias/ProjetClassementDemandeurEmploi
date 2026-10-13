@@ -18,7 +18,7 @@ st.set_page_config(page_title="Prediction", layout="wide")
 
 API_URL = "http://localhost:8000"
 
-st.session_state.setdefault("conseiller_id", "cconastancias")
+st.session_state.setdefault("conseiller_id", "cconstancias")
 st.session_state.setdefault("prediction_payload", None)
 st.session_state.setdefault("prediction_result", None)
 st.session_state.setdefault("prediction_explanation", None)
