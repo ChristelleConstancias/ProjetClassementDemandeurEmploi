@@ -1,7 +1,8 @@
 .venv
 .git
 notebooks
-artifacts
+artifacts/*
+!artifacts/pipeline_prediction_retour_emploi.joblib
 mlruns
 data
 __pycache__
