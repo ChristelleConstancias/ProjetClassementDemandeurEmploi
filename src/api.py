@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
+from time import perf_counter
 import uuid
 
 import joblib
 import mlflow
 import mlflow.sklearn
+import numpy as np
 import pandas as pd
 import shap
 from fastapi import FastAPI, HTTPException
@@ -172,6 +174,7 @@ def predict(demandeur_emploi: DemandeurEmploi):
     session_id = str(uuid.uuid4())
 
     try:
+        inference_started_at = perf_counter()
         # Préparer les données pour la prédiction
         usager_test = demandeur_emploi.model_dump()
         conseiller_id = usager_test["conseiller_id"].strip()
@@ -189,6 +192,7 @@ def predict(demandeur_emploi: DemandeurEmploi):
         probabilities = pipeline.predict_proba(X_test)[0]
         class_index = list(pipeline.classes_).index(prediction)
         probability = float(probabilities[class_index])
+        inference_latency_ms = (perf_counter() - inference_started_at) * 1000
         # Journaliser la prédiction et la probabilité associée
         journaliser_prediction(
             session_id,
@@ -204,6 +208,7 @@ def predict(demandeur_emploi: DemandeurEmploi):
             "usager_id_pseudonymise": usager_id_pseudonymise,
             "prediction": int(prediction),
             "probability": round(probability, 4),
+            "inference_latency_ms": round(inference_latency_ms, 3),
         }
 
     except RuntimeError as e:
@@ -233,6 +238,7 @@ def explain(demandeur_emploi: DemandeurEmploi):
             ),
         )
 
+    explanation_started_at = perf_counter()
     retraining_config = active_artifact.get("retraining_config", {})
     features = retraining_config.get("features") or C.FEATURES_SCENARIO_2
     X = D.prepare_data(demandeur_emploi.model_dump(), features=features)
@@ -250,14 +256,17 @@ def explain(demandeur_emploi: DemandeurEmploi):
     expected_value = explainer.expected_value
     if hasattr(expected_value, "tolist"):
         expected_value = expected_value.tolist()
+    feature_names = noms_variables_transformees(
+        pipeline.named_steps["preprocessor"]
+    )
+    explanation_latency_ms = (perf_counter() - explanation_started_at) * 1000
 
     return {
         "classes": [int(classe) for classe in pipeline.classes_],
-        "feature_names": noms_variables_transformees(
-            pipeline.named_steps["preprocessor"]
-        ),
+        "feature_names": feature_names,
         "shap_values": shap_values,
         "expected_value": expected_value,
+        "explanation_latency_ms": round(explanation_latency_ms, 3),
     }
 
 
@@ -294,13 +303,56 @@ def calculer_cout_metier(y_reel, predictions) -> int:
     )
 
 
-def candidat_est_meilleur(cout_actuel: int, cout_candidat: int) -> bool:
-    return cout_candidat < cout_actuel
+def evaluer_candidat_retrain(y_reel, predictions) -> dict[str, float | int]:
+    matrice = confusion_matrix(y_reel, predictions, labels=[0, 1, 2])
+    return {
+        "accuracy": float(accuracy_score(y_reel, predictions)),
+        "f1_macro": float(
+            f1_score(y_reel, predictions, average="macro", zero_division=0)
+        ),
+        "cout_metier": calculer_cout_metier(y_reel, predictions),
+        "erreurs_2_vers_0": int(matrice[2, 0]),
+        "erreurs_2_vers_1": int(matrice[2, 1]),
+        "fausses_alertes_0_ou_1_vers_2": int(matrice[0, 2] + matrice[1, 2]),
+        "recall_classe_2": float(
+            recall_score(
+                y_reel,
+                predictions,
+                labels=[2],
+                average=None,
+                zero_division=0,
+            )[0]
+        ),
+    }
+
+
+def cle_selection_retrain(metrics: dict[str, float | int]) -> tuple:
+    return (
+        int(metrics["cout_metier"]),
+        int(metrics["erreurs_2_vers_0"]),
+        -float(metrics["recall_classe_2"]),
+        -float(metrics["f1_macro"]),
+    )
+
+
+def candidat_est_meilleur(
+    metrics_actuelles: dict[str, float | int],
+    metrics_candidat: dict[str, float | int],
+) -> bool:
+    return cle_selection_retrain(metrics_candidat) < cle_selection_retrain(
+        metrics_actuelles
+    )
 
 
 def entrainer_artefact(
     artifact: dict[str, object],
-) -> tuple[dict[str, object], dict[str, float], int, int, int]:
+) -> tuple[
+    dict[str, object],
+    dict[str, float | int],
+    dict[str, float | int],
+    int,
+    int,
+]:
     """Réentraîne une copie du meilleur pipeline et renvoie l'artefact prêt à sauver."""
     config = artifact.get("retraining_config")
     if not isinstance(config, dict) or not config.get("best_params"):
@@ -309,8 +361,8 @@ def entrainer_artefact(
     target = config.get("target", C.CIBLE)
     features = config.get("features", C.FEATURES_SCENARIO_2)
     historique = D.load_data(verbose=False)
-    jeux = [historique]
     feedback_count = 0
+    feedback = None
 
     if C.FEEDBACK_FILE.exists():
         feedback = D.load_feedback(verbose=False)
@@ -320,67 +372,94 @@ def entrainer_artefact(
             raise ValueError(f"Colonne cible {target!r} absente des feedbacks")
         feedback = feedback.loc[feedback[target].notna()].copy()
         feedback_count = len(feedback)
-        if feedback_count:
-            jeux.append(feedback)
 
-    donnees = D.prepare_training_data(pd.concat(jeux, ignore_index=True, sort=False))
+    historique_y = pd.to_numeric(historique[target], errors="raise").astype(int)
+    seed = int(config.get("random_state", C.SEED))
+    test_size = float(config.get("test_size", 0.2))
+    indices_train_historique, indices_test = train_test_split(
+        historique.index,
+        test_size=test_size,
+        random_state=seed,
+        stratify=historique_y,
+    )
+
+    historique_prepare = D.prepare_training_data(historique)
     missing_features = [
-        feature for feature in features if feature not in donnees.columns
+        feature for feature in features if feature not in historique_prepare.columns
     ]
     if missing_features:
         raise ValueError(f"Variables requises absentes : {missing_features}")
 
-    X = donnees[features].copy()
-    y = pd.to_numeric(donnees[target], errors="raise").astype(int)
-    seed = int(config.get("random_state", C.SEED))
-    test_size = float(config.get("test_size", 0.2))
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=test_size,
-        random_state=seed,
-        stratify=y,
-    )
+    X_train = historique_prepare.loc[indices_train_historique, features].copy()
+    y_train = historique_y.loc[indices_train_historique].copy()
+    X_test = historique_prepare.loc[indices_test, features].copy()
+    y_test = historique_y.loc[indices_test].copy()
+
+    if feedback_count and feedback is not None:
+        feedback_prepare = D.prepare_training_data(feedback)
+        missing_feedback_features = [
+            feature for feature in features if feature not in feedback_prepare.columns
+        ]
+        if missing_feedback_features:
+            raise ValueError(
+                f"Variables requises absentes des feedbacks : {missing_feedback_features}"
+            )
+        X_train = pd.concat(
+            [X_train.reset_index(drop=True), feedback_prepare[features]],
+            ignore_index=True,
+        )
+        y_feedback = pd.to_numeric(feedback[target], errors="raise").astype(int)
+        y_train = pd.concat(
+            [y_train.reset_index(drop=True), y_feedback.reset_index(drop=True)],
+            ignore_index=True,
+        )
 
     pipeline_reentraine = clone(artifact["pipeline"])
+    model_name = config.get("model_name")
+    model_types = {
+        "lightgbm": "LGBMClassifier",
+        "xgboost": "XGBClassifier",
+        "random_forest": "RandomForestClassifier",
+        "logistic_regression": "LogisticRegression",
+    }
+    expected_model_type = model_types.get(model_name)
+    if expected_model_type and type(pipeline_reentraine.named_steps["model"]).__name__ != expected_model_type:
+        raise ValueError(
+            "Le modèle de l'artefact ne correspond pas à sa configuration : "
+            f"{type(pipeline_reentraine.named_steps['model']).__name__} au lieu de "
+            f"{expected_model_type}."
+        )
     pipeline_reentraine.set_params(**config["best_params"])
-    pipeline_reentraine.fit(X_train, y_train)
+    class2_weight_factor = float(config.get("class2_weight_factor", 1.0))
+    if model_name == "xgboost":
+        sample_weight = np.where(y_train.to_numpy() == 2, class2_weight_factor, 1.0)
+        pipeline_reentraine.fit(
+            X_train,
+            y_train,
+            model__sample_weight=sample_weight,
+        )
+    else:
+        pipeline_reentraine.fit(X_train, y_train)
 
     predictions = pipeline_reentraine.predict(X_test)
-    cout_candidat = calculer_cout_metier(y_test, predictions)
     predictions_actuelles = artifact["pipeline"].predict(X_test)
-    cout_actuel = calculer_cout_metier(y_test, predictions_actuelles)
-    metrics = {
-        "accuracy": float(accuracy_score(y_test, predictions)),
-        "f1_macro": float(
-            f1_score(y_test, predictions, average="macro", zero_division=0)
-        ),
-        "cout_metier": float(cout_candidat),
-        "recall_classe_2": float(
-            recall_score(
-                y_test,
-                predictions,
-                labels=[2],
-                average=None,
-                zero_division=0,
-            )[0]
-        ),
-    }
+    metrics = evaluer_candidat_retrain(y_test, predictions)
+    metrics_actuelles = evaluer_candidat_retrain(y_test, predictions_actuelles)
 
-    pipeline_final = clone(pipeline_reentraine).fit(X, y)
     updated_config = {
         **config,
         "last_retrained_at": datetime.now(timezone.utc).isoformat(),
-        "training_rows": len(X),
+        "training_rows": len(X_train),
         "feedback_rows": feedback_count,
+        "evaluation_rows": len(X_test),
         "last_evaluation": metrics,
     }
     return (
-        {**artifact, "pipeline": pipeline_final, "retraining_config": updated_config},
+        {**artifact, "pipeline": pipeline_reentraine, "retraining_config": updated_config},
         metrics,
-        len(X),
+        metrics_actuelles,
+        len(X_train),
         feedback_count,
-        cout_actuel,
     )
 
 
@@ -403,12 +482,13 @@ def retrain():
         (
             updated_artifact,
             metrics,
+            metrics_actuelles,
             training_rows,
             feedback_rows,
-            cout_actuel,
         ) = entrainer_artefact(artifact)
         cout_candidat = int(metrics["cout_metier"])
-        promouvoir = candidat_est_meilleur(cout_actuel, cout_candidat)
+        cout_actuel = int(metrics_actuelles["cout_metier"])
+        promouvoir = candidat_est_meilleur(metrics_actuelles, metrics)
 
         retraining_config = updated_artifact["retraining_config"]
         mlflow.set_tracking_uri(C.MLFLOW_TRACKING_URI)
@@ -431,6 +511,12 @@ def retrain():
                 {
                     **metrics,
                     "cout_metier_pipeline_actuel": float(cout_actuel),
+                    "erreurs_2_vers_0_pipeline_actuel": float(
+                        metrics_actuelles["erreurs_2_vers_0"]
+                    ),
+                    "recall_classe_2_pipeline_actuel": float(
+                        metrics_actuelles["recall_classe_2"]
+                    ),
                 }
             )
             mlflow.set_tag("promotion_decision", "promoted" if promouvoir else "rejected")

@@ -28,6 +28,32 @@ def test_business_cost_uses_notebook_error_weights():
 
 
 def test_candidate_is_promoted_only_for_strictly_lower_business_cost():
-    assert candidat_est_meilleur(10, 9)
-    assert not candidat_est_meilleur(10, 10)
-    assert not candidat_est_meilleur(10, 11)
+    current = {
+        "cout_metier": 10,
+        "erreurs_2_vers_0": 2,
+        "recall_classe_2": 0.7,
+        "f1_macro": 0.6,
+    }
+    assert candidat_est_meilleur(current, {**current, "cout_metier": 9})
+    assert not candidat_est_meilleur(current, {**current, "cout_metier": 11})
+    assert not candidat_est_meilleur(current, current)
+
+
+def test_candidate_tie_break_matches_notebook_selection_order():
+    current = {
+        "cout_metier": 10,
+        "erreurs_2_vers_0": 2,
+        "recall_classe_2": 0.7,
+        "f1_macro": 0.6,
+    }
+    fewer_critical_errors = {**current, "erreurs_2_vers_0": 1}
+    higher_recall = {**current, "recall_classe_2": 0.8}
+    higher_f1 = {**current, "f1_macro": 0.7}
+
+    assert candidat_est_meilleur(current, fewer_critical_errors)
+    assert candidat_est_meilleur(current, higher_recall)
+    assert candidat_est_meilleur(current, higher_f1)
+    assert not candidat_est_meilleur(
+        current,
+        {**current, "erreurs_2_vers_0": 3, "recall_classe_2": 0.9},
+    )

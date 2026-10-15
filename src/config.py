@@ -47,10 +47,10 @@ DIR_MODELS = ROOT / "artifacts"
 ordre_niveau_diplome = {
     "Sans diplôme": 1,
     "Bac": 2,
-    "Bac + 2": 3,
-    "Bac + 3": 4,
-    "Bac + 5": 5,
-    "Bac + 8": 6,
+    "Bac+2": 3,
+    "Bac+3": 4,
+    "Bac+5": 5,
+    "Bac+8": 6,
 }
 
 # --------------------------------------------------------------------------
@@ -69,6 +69,11 @@ FEATURES_CAT = [
     "est_allocataire",
     "nationalite_hors_ue",
 ]
+
+FEATURES_CAT_DERIVEES = [
+    "departement", 
+    "famille_metier"
+    ]
 
 FEATURE_TEXT = ["synthese_entretien"]
 
@@ -118,7 +123,7 @@ FEATURES_SCENARIO_1 = (
 # et en conservant les autres variables sensibles age, est_allocataire
 #
 # scenario 2C : Approche tabulaire en supprimant 2 variables sensibles
-#   (nationalite_hors_ue, est_allocataire) on garde a
+#   (nationalite_hors_ue, est_allocataire) on garde age
 # --------------------------------------------------------------------------
 FEATURES_NUM_SCENARIO_2 = ["anciennete_poste_ans"]
 FEATURES_CAT_SCENARIO_2 = [

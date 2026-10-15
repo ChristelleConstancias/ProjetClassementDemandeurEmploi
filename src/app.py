@@ -3,6 +3,7 @@ Interface Streamlit pour l'API de prédiction retour à l'emploi
 """
 
 import sys
+import os
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +17,12 @@ from src import config as C
 
 st.set_page_config(page_title="Prediction", layout="wide")
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
+
+#API_URL = os.getenv(
+#    "API_URL",
+#   "https://projetclassementdemandeuremploi-latest.onrender.com",
+#).rstrip("/")
 
 st.session_state.setdefault("conseiller_id", "cconstancias")
 st.session_state.setdefault("prediction_payload", None)
@@ -182,6 +188,11 @@ if resultat:
     st.success("Prédiction réalisée")
     st.metric("Classe prédite", libelles.get(prediction, prediction))
     st.metric("Score de confiance", f"{resultat['probability']:.2%}")
+    if "inference_latency_ms" in resultat:
+        st.metric(
+            "Latence d'inférence (API)",
+            f"{resultat['inference_latency_ms']:.3f} ms",
+        )
 
     if st.button("Expliquer la prédiction", key="explain_prediction"):
         try:
@@ -252,6 +263,11 @@ if resultat:
             )
 
             st.subheader("Explication de la prédiction")
+            if "explanation_latency_ms" in explication:
+                st.metric(
+                    "Latence d'explication (API)",
+                    f"{explication['explanation_latency_ms']:.3f} ms",
+                )
             st.caption(
                 "Contributions des variables à la classe prédite : une valeur "
                 "positive pousse le score vers cette classe, une valeur négative "

@@ -9,6 +9,9 @@ from inference_history import filter_predictions, get_historique
 from src.privacy import pseudonymiser_usager_id
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
+# API _ docker
+#API_URL = "http://localhost:8001"
+#API_URL = "https://projetclassementdemandeuremploi-latest.onrender.com"
 
 st.set_page_config(page_title="Historique des prédictions", layout="wide")
 st.title("Historique des prédictions")
